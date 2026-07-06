@@ -82,6 +82,11 @@ class AppPanelProvider extends PanelProvider
                 fn (): View => view('auth.register-signin-link'),
             )
 
+            ->renderHook(
+                PanelsRenderHook::SIMPLE_PAGE_START,
+                fn (): string => '<script>localStorage.setItem("theme", "light"); document.documentElement.classList.remove("dark");</script>',
+            )
+
             ->colors([
                 'primary' => Color::Blue,
             ])
