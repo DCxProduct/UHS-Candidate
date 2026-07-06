@@ -1,0 +1,61 @@
+<?php
+
+namespace Chanthoeun\FilamentCustomForms\Filament\Resources\CustomFormEntries\Pages;
+
+use Chanthoeun\FilamentCustomForms\CustomFormPlugin;
+use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomFormEntries\CustomFormEntryResource;
+use Filament\Actions;
+use Filament\Resources\Pages\EditRecord;
+use Illuminate\Contracts\Support\Htmlable;
+use LaraZeus\SpatieTranslatable\Actions\LocaleSwitcher;
+use LaraZeus\SpatieTranslatable\Resources\Pages\EditRecord\Concerns\Translatable;
+
+class EditCustomFormEntry extends EditRecord
+{
+    use Translatable;
+
+    protected static string $resource = CustomFormEntryResource::class;
+
+    public function getHeading(): string|Htmlable
+    {
+        $customForm = $this->getRecord()->customForm;
+        if ($customForm) {
+            return 'Edit '.$customForm->name;
+        }
+
+        return parent::getHeading();
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return array_filter([
+            CustomFormPlugin::get()->hasTranslations() ? LocaleSwitcher::make() : null,
+            Actions\DeleteAction::make(),
+        ]);
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        $breadcrumbs = [];
+        $record = $this->getRecord();
+        $customForm = $record->customForm;
+
+        $label = 'Custom Form Entries';
+        $urlParams = [];
+
+        if ($customForm) {
+            $label = $customForm->name.' Entries';
+            $urlParams = ['tableFilters' => ['custom_form_id' => ['value' => $customForm->id]]];
+        }
+
+        $url = CustomFormEntryResource::getUrl('index');
+        if (! empty($urlParams)) {
+            $url .= '?'.http_build_query($urlParams);
+        }
+
+        $breadcrumbs[$url] = $label;
+        $breadcrumbs[] = 'Edit';
+
+        return $breadcrumbs;
+    }
+}

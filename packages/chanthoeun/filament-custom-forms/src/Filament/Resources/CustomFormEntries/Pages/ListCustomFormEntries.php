@@ -1,0 +1,247 @@
+<?php
+
+namespace Chanthoeun\FilamentCustomForms\Filament\Resources\CustomFormEntries\Pages;
+
+use Chanthoeun\FilamentCustomForms\CustomFormPlugin;
+use Chanthoeun\FilamentCustomForms\Exports\CustomFormEntryExport;
+use Chanthoeun\FilamentCustomForms\Exports\CustomFormEntrySqlExport;
+use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomFormEntries\CustomFormEntryResource;
+use Chanthoeun\FilamentCustomForms\Models\CustomForm;
+use Chanthoeun\FilamentDocumentBuilder\Actions\DownloadAllPdfAction;
+use Chanthoeun\FilamentDocumentBuilder\Models\DocumentTemplate;
+use Filament\Actions;
+use Filament\Forms\Components\Radio;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\ListRecords;
+use Illuminate\Contracts\Support\Htmlable;
+use LaraZeus\SpatieTranslatable\Actions\LocaleSwitcher;
+use LaraZeus\SpatieTranslatable\Resources\Pages\ListRecords\Concerns\Translatable;
+use Maatwebsite\Excel\Excel;
+
+class ListCustomFormEntries extends ListRecords
+{
+    use Translatable;
+
+    protected static string $resource = CustomFormEntryResource::class;
+
+    public ?string $activeFormId = null;
+
+    public function mount(): void
+    {
+        parent::mount();
+        // Initialize from URL or request body on page load
+        $this->activeFormId = request()->input('tableFilters.custom_form_id.value')
+            ?? data_get(request()->query('tableFilters'), 'custom_form_id.value')
+            ?? request()->query('form_id');
+    }
+
+    public function updatedTableFilters(): void
+    {
+        // Update local state when filters change
+        $this->activeFormId = data_get($this->tableFilters, 'custom_form_id.value');
+    }
+
+    public function getHeading(): string|Htmlable
+    {
+        // Use the manually tracked state which is robust across updates
+        if ($this->activeFormId) {
+            $customForm = CustomForm::find($this->activeFormId);
+            if ($customForm) {
+                $locale = isset($this->activeLocale) && $this->activeLocale ? $this->activeLocale : app()->getLocale();
+                $name = __("filament-custom-forms::fcf.form.names.{$customForm->slug}", [], $locale);
+                if ($name === "filament-custom-forms::fcf.form.names.{$customForm->slug}") {
+                    if ($locale && method_exists($customForm, 'getTranslation')) {
+                        $translatedName = $customForm->getTranslation('name', $locale, false) ?: $customForm->getTranslation('name', config('app.fallback_locale', 'en'), false);
+                        $name = $translatedName ?: $customForm->name;
+                    } else {
+                        $name = $customForm->name;
+                    }
+                }
+
+                return $name;
+            }
+        }
+
+        return __('filament-custom-forms::fcf.entry.plural');
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
+    protected function getHeaderActions(): array
+    {
+        $customFormId = request()->input('tableFilters.custom_form_id.value');
+        $createLabel = __('filament-custom-forms::fcf.entry.action.create', ['name' => __('filament-custom-forms::fcf.entry.single')]);
+
+        if ($customFormId) {
+            $locale = isset($this->activeLocale) && $this->activeLocale ? $this->activeLocale : app()->getLocale();
+            $customForm = CustomForm::find($customFormId);
+            if ($customForm) {
+                $name = __("filament-custom-forms::fcf.form.names.{$customForm->slug}", [], $locale);
+                if ($name === "filament-custom-forms::fcf.form.names.{$customForm->slug}") {
+                    if ($locale && method_exists($customForm, 'getTranslation')) {
+                        $translatedName = $customForm->getTranslation('name', $locale, false) ?: $customForm->getTranslation('name', config('app.fallback_locale', 'en'), false);
+                        $name = $translatedName ?: $customForm->name;
+                    } else {
+                        $name = $customForm->name;
+                    }
+                }
+                $createLabel = __('filament-custom-forms::fcf.entry.action.create', ['name' => $name], $locale);
+            }
+        }
+
+        return array_filter([
+            CustomFormPlugin::get()->hasTranslations() ? LocaleSwitcher::make() : null,
+
+            Actions\Action::make('export_data')
+                ->label(__('filament-custom-forms::fcf.entry.action.export_data'))
+                ->icon('heroicon-o-arrow-up-tray')
+                ->form([
+                    Radio::make('format')
+                        ->label(__('filament-custom-forms::fcf.entry.field.export_format'))
+                        ->options([
+                            'excel' => __('filament-custom-forms::fcf.entry.option.excel'),
+                            'json' => __('filament-custom-forms::fcf.entry.option.json'),
+                            'pdf' => 'PDF (.pdf)',
+                        ])
+                        ->default('excel')
+                        ->inline()
+                        ->required(),
+                ])
+                ->action(function (array $data) {
+                    $query = $this->getFilteredTableQuery();
+
+                    if ($this->activeFormId) {
+                        $query->where('custom_form_id', $this->activeFormId);
+                    }
+
+                    $records = $query->get();
+
+                    if ($records->isEmpty()) {
+                        Notification::make()
+                            ->title('No records to export')
+                            ->warning()
+                            ->send();
+
+                        return;
+                    }
+
+                    $format = $data['format'];
+
+                    $formName = 'custom-entries';
+                    if ($this->activeFormId) {
+                        $customForm = CustomForm::find($this->activeFormId);
+                        if ($customForm) {
+                            $name = trim($customForm->name);
+                            if ($format === 'sql') {
+                                // SQL safe name
+                                $name = preg_replace('/[^A-Za-z0-9_]/', '_', strtolower($name));
+                                $formName = $name;
+                            } else {
+                                // File safe name
+                                $name = preg_replace('/[^A-Za-z0-9\-\_ ]/', '', $name);
+                                $formName = str_replace(' ', '-', $name);
+                            }
+                        }
+                    }
+
+                    if ($format === 'excel') {
+                        return \Maatwebsite\Excel\Facades\Excel::download(
+                            new CustomFormEntryExport($records, $this->activeFormId, isset($this->activeLocale) ? $this->activeLocale : null),
+                            $formName.'-'.now()->format('Y-m-d-His').'.xlsx'
+                        );
+                    } elseif ($format === 'pdf') {
+                        return \Maatwebsite\Excel\Facades\Excel::download(
+                            new CustomFormEntryExport($records, $this->activeFormId, isset($this->activeLocale) ? $this->activeLocale : null),
+                            $formName.'-'.now()->format('Y-m-d-His').'.pdf',
+                            Excel::MPDF
+                        );
+                    } elseif ($format === 'json') {
+                        // Reuse the Export class to get consistent formatting
+                        $exporter = new CustomFormEntryExport($records, $this->activeFormId, isset($this->activeLocale) ? $this->activeLocale : null);
+                        $headings = $exporter->headings();
+
+                        $data = $records->map(function ($record) use ($exporter, $headings) {
+                            $values = $exporter->map($record);
+
+                            return array_combine($headings, $values);
+                        });
+
+                        return response()->streamDownload(function () use ($data) {
+                            echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+                        }, $formName.'-'.now()->format('Y-m-d-His').'.json');
+                    } elseif ($format === 'sql') {
+                        $exporter = new CustomFormEntrySqlExport($records, $this->activeFormId, $formName);
+                        $sql = $exporter->generate();
+
+                        return response()->streamDownload(function () use ($sql) {
+                            echo $sql;
+                        }, $formName.'-'.now()->format('Y-m-d-His').'.sql');
+                    }
+                })
+                ->visible(function () {
+                    $panelId = filament()->getCurrentPanel()?->getId();
+                    if (! $panelId || ! $this->activeFormId) {
+                        return true;
+                    }
+
+                    $form = CustomForm::find($this->activeFormId);
+                    if (! $form) {
+                        return true;
+                    }
+
+                    return $form->hasPermissionInPanel($panelId, 'ViewAny:CustomFormEntry');
+                }),
+            DownloadAllPdfAction::make('export_pdf')
+                ->label('Download PDF')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('success')
+                ->records(function () {
+                    $query = $this->getFilteredTableQuery();
+                    if ($this->activeFormId) {
+                        $query->where('custom_form_id', $this->activeFormId);
+                    }
+
+                    return $query->get();
+                })
+                ->templateType(fn () => $this->activeFormId ? 'custom_form_'.$this->activeFormId : null)
+                ->filename(function () {
+                    $formName = 'custom-entries';
+                    if ($this->activeFormId) {
+                        $customForm = CustomForm::find($this->activeFormId);
+                        if ($customForm) {
+                            $name = trim($customForm->name);
+                            $name = preg_replace('/[^A-Za-z0-9\-\_ ]/', '', $name);
+                            $formName = str_replace(' ', '-', $name);
+                        }
+                    }
+
+                    return $formName.'-'.now()->format('Y-m-d-His').'.pdf';
+                })
+                ->visible(function () {
+                    if (! class_exists(DocumentTemplate::class)) {
+                        return false;
+                    }
+
+                    $panelId = filament()->getCurrentPanel()?->getId();
+                    if (! $panelId || ! $this->activeFormId) {
+                        return true;
+                    }
+
+                    $form = CustomForm::find($this->activeFormId);
+                    if (! $form) {
+                        return true;
+                    }
+
+                    return $form->hasPermissionInPanel($panelId, 'ViewAny:CustomFormEntry');
+                }),
+            Actions\CreateAction::make()
+                ->label($createLabel)
+                ->url(fn () => CustomFormEntryResource::getUrl('create', [
+                    'form_id' => $this->activeFormId,
+                ])),
+        ]);
+    }
+}

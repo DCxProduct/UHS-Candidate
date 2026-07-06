@@ -1,0 +1,299 @@
+<?php
+
+namespace Chanthoeun\FilamentCustomForms;
+
+use App\Models\User;
+use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomFormEntries\CustomFormEntryResource;
+use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomForms\CustomFormResource;
+use Chanthoeun\FilamentCustomForms\Models\CustomForm;
+use Chanthoeun\FilamentCustomForms\Models\CustomFormEntry;
+use Chanthoeun\FilamentDocumentBuilder\DocumentBuilderPlugin;
+use Filament\Contracts\Plugin;
+use Filament\Panel;
+use LaraZeus\SpatieTranslatable\SpatieTranslatablePlugin;
+
+class CustomFormPlugin implements Plugin
+{
+    protected ?string $formModel = null;
+
+    protected ?string $entryModel = null;
+
+    protected ?string $userModel = null;
+
+    protected ?string $uploadDisk = null;
+
+    protected ?string $uploadDirectory = null;
+
+    protected ?string $uploadVisibility = null;
+
+    protected string|bool|null $navigationGroup = null;
+
+    protected string|bool|null $navigationEntryGroup = null;
+
+    protected ?string $navigationFormIcon = null;
+
+    protected ?string $navigationEntryIcon = null;
+
+    protected ?int $navigationSort = null;
+
+    protected bool $hasPanelAccess = false;
+
+    protected bool $hasTranslations = false;
+
+    protected bool $hideBuilders = false;
+
+    public function getId(): string
+    {
+        return 'filament-custom-forms';
+    }
+
+    public static function make(): static
+    {
+        return app(static::class);
+    }
+
+    public static function get(): static
+    {
+        /** @var static $plugin */
+        $plugin = filament(app(static::class)->getId());
+
+        return $plugin;
+    }
+
+    // --- Models ---
+    public function formModel(string $model): static
+    {
+        $this->formModel = $model;
+
+        return $this;
+    }
+
+    public function getFormModel(): string
+    {
+        return $this->formModel ?? config('filament-custom-forms.models.form', CustomForm::class);
+    }
+
+    public function entryModel(string $model): static
+    {
+        $this->entryModel = $model;
+
+        return $this;
+    }
+
+    public function getEntryModel(): string
+    {
+        return $this->entryModel ?? config('filament-custom-forms.models.entry', CustomFormEntry::class);
+    }
+
+    public function userModel(string $model): static
+    {
+        $this->userModel = $model;
+
+        return $this;
+    }
+
+    public function getUserModel(): string
+    {
+        return $this->userModel ?? config('filament-custom-forms.models.user', User::class);
+    }
+
+    // --- Uploads ---
+    public function uploadDisk(string $disk): static
+    {
+        $this->uploadDisk = $disk;
+
+        return $this;
+    }
+
+    public function getUploadDisk(): string
+    {
+        return $this->uploadDisk ?? config('filament-custom-forms.uploads.disk', 'public');
+    }
+
+    public function uploadDirectory(string $directory): static
+    {
+        $this->uploadDirectory = $directory;
+
+        return $this;
+    }
+
+    public function getUploadDirectory(): string
+    {
+        return $this->uploadDirectory ?? config('filament-custom-forms.uploads.directory', 'custom-forms');
+    }
+
+    public function uploadVisibility(string $visibility): static
+    {
+        $this->uploadVisibility = $visibility;
+
+        return $this;
+    }
+
+    public function getUploadVisibility(): string
+    {
+        return $this->uploadVisibility ?? config('filament-custom-forms.uploads.visibility', 'public');
+    }
+
+    // --- Navigation ---
+    public function navigationGroup(string|bool|null $group): static
+    {
+        $this->navigationGroup = $group;
+
+        return $this;
+    }
+
+    public function getNavigationGroup(): ?string
+    {
+        if ($this->navigationGroup === false) {
+            return null;
+        }
+
+        return $this->navigationGroup ?? config('filament-custom-forms.navigation.group', __('filament-custom-forms::fcf.form.builder_group'));
+    }
+
+    public function navigationEntryGroup(string|bool|null $group): static
+    {
+        $this->navigationEntryGroup = $group;
+
+        return $this;
+    }
+
+    public function getNavigationEntryGroup(): ?string
+    {
+        if ($this->navigationEntryGroup === false) {
+            return null;
+        }
+
+        return $this->navigationEntryGroup ?? config('filament-custom-forms.navigation.entry_group', __('filament-custom-forms::fcf.form.entry_group'));
+    }
+
+    /**
+     * @deprecated Use navigationEntryGroup() instead.
+     */
+    public function navigationOpsGroup(string $group): static
+    {
+        return $this->navigationEntryGroup($group);
+    }
+
+    /**
+     * @deprecated Use getNavigationEntryGroup() instead.
+     */
+    public function getNavigationOpsGroup(): string
+    {
+        return $this->getNavigationEntryGroup();
+    }
+
+    public function navigationFormIcon(string $icon): static
+    {
+        $this->navigationFormIcon = $icon;
+
+        return $this;
+    }
+
+    public function getNavigationFormIcon(): string
+    {
+        return $this->navigationFormIcon ?? config('filament-custom-forms.navigation.icon', 'heroicon-o-rectangle-stack');
+    }
+
+    public function navigationEntryIcon(string $icon): static
+    {
+        $this->navigationEntryIcon = $icon;
+
+        return $this;
+    }
+
+    public function getNavigationEntryIcon(): string
+    {
+        return $this->navigationEntryIcon ?? config('filament-custom-forms.navigation.entry_icon', 'heroicon-o-document-text');
+    }
+
+    public function navigationSort(?int $sort): static
+    {
+        $this->navigationSort = $sort;
+
+        return $this;
+    }
+
+    public function getNavigationSort(): ?int
+    {
+        return $this->navigationSort ?? config('filament-custom-forms.navigation.sort');
+    }
+
+    public function hideBuilders(bool $hide = true): static
+    {
+        $this->hideBuilders = $hide;
+
+        return $this;
+    }
+
+    public function isHideBuilders(): bool
+    {
+        return $this->hideBuilders;
+    }
+
+    public function panelAccess(bool $condition = true): static
+    {
+        $this->hasPanelAccess = $condition;
+
+        return $this;
+    }
+
+    public function hasPanelAccess(): bool
+    {
+        return $this->hasPanelAccess;
+    }
+
+    public function translations(bool $condition = true): static
+    {
+        $this->hasTranslations = $condition;
+
+        return $this;
+    }
+
+    public function hasTranslations(): bool
+    {
+        return $this->hasTranslations;
+    }
+
+    public function register(Panel $panel): void
+    {
+        $resources = [
+            CustomFormEntryResource::class,
+        ];
+
+        if (! $this->isHideBuilders()) {
+            $resources[] = CustomFormResource::class;
+        }
+
+        $panel->resources($resources);
+
+        // Automatically register the DocumentBuilder plugin if available
+        if (class_exists(DocumentBuilderPlugin::class) && ! $this->isHideBuilders()) {
+            $documentBuilderPlugin = DocumentBuilderPlugin::make();
+
+            // Sync the navigation group to merge them into one (e.g., "Form Builder")
+            if (method_exists($documentBuilderPlugin, 'navigationGroup')) {
+                $documentBuilderPlugin->navigationGroup($this->getNavigationGroup());
+            }
+
+            // Register it into the panel
+            $panel->plugin($documentBuilderPlugin);
+        }
+
+        if (class_exists(SpatieTranslatablePlugin::class) && ! $panel->hasPlugin('spatie-translatable')) {
+            $locales = $this->hasTranslations()
+                ? config('filament-custom-forms.locales', ['en', 'km'])
+                : [config('app.fallback_locale', 'en')];
+
+            $panel->plugin(
+                SpatieTranslatablePlugin::make()
+                    ->defaultLocales($locales)
+            );
+        }
+    }
+
+    public function boot(Panel $panel): void
+    {
+        //
+    }
+}
