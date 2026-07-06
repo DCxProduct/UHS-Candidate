@@ -4,6 +4,7 @@ namespace Chanthoeun\FilamentCustomForms\Filament\Resources\CustomForms;
 
 use BackedEnum;
 use Chanthoeun\FilamentCustomForms\CustomFormPlugin;
+use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomForms\Pages;
 use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomForms\Schemas\CustomFormForm;
 use Chanthoeun\FilamentCustomForms\Filament\Resources\CustomForms\Tables\CustomFormsTable;
 use Filament\Resources\Resource;
@@ -15,9 +16,38 @@ class CustomFormResource extends Resource
 {
     use Translatable;
 
+    public static function getNavigationLabel(): string
+    {
+        return __('navigation.custom_forms');
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return 40;
+    }
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('navigation.groups.form_builder');
+    }
     public static function getModel(): string
     {
         return CustomFormPlugin::get()->getFormModel();
+    }
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return static::isAdmin();
+    }
+
+    public static function canAccess(): bool
+    {
+        return static::isAdmin();
+    }
+
+    protected static function isAdmin(): bool
+    {
+        return auth()->user()?->registration_type === 'admin';
     }
 
     public static function getModelLabel(): string
@@ -30,19 +60,9 @@ class CustomFormResource extends Resource
         return __('filament-custom-forms::fcf.form.plural');
     }
 
-    public static function getNavigationIcon(): string|BackedEnum|null
+    public static function getNavigationIcon(): string | BackedEnum | null
     {
         return CustomFormPlugin::get()->getNavigationFormIcon();
-    }
-
-    public static function getNavigationGroup(): ?string
-    {
-        return CustomFormPlugin::get()->getNavigationGroup();
-    }
-
-    public static function getNavigationSort(): ?int
-    {
-        return CustomFormPlugin::get()->getNavigationSort();
     }
 
     public static function form(Schema $schema): Schema
